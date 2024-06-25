@@ -190,10 +190,6 @@ class Enemy(pygame.sprite.Sprite):
         if self.rect.top > 600:
             self.kill()
 
-    def update_(self, new_player_rect_x):
-        self.player_rect_x = new_player_rect_x
-        self.setStrategy()
-
     def move(self):
         if USE_STRATEGY:
             self.strategy.move(self)
