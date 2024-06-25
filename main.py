@@ -88,7 +88,7 @@ if USE_OBSERVER:
     game_state.attach(timer_observer)
 
 # Flyweight pattern
-class EnemyFlyweight:
+class Flyweight:
     def __init__(self, image):
         self.image = image
 
@@ -115,10 +115,6 @@ class ZigZagBehavior(EnemyBehavior):
         enemy.rect.y += enemy.speed
         if enemy.rect.x <= 0 or enemy.rect.x >= 800:
             enemy.direction *= -1
-
-class StraightBehavior(EnemyBehavior):
-    def move(self, enemy):
-        enemy.rect.y += enemy.speed
 
 class TowardsPlayerBehavior(EnemyBehavior):
     def move(self, enemy):
@@ -150,7 +146,12 @@ class Player(pygame.sprite.Sprite):
 class Bullet(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.image.load("bullet.png").convert_alpha()
+        if USE_FLYWEIGHT:
+            self.flyweight = flyweight_factory.get_flyweight("bullet.png")
+            self.image = self.flyweight.image
+        else:
+            self.image = pygame.image.load("bullet.png").convert_alpha()
+        
         self.rect = self.image.get_rect(center=(x, y))
         self.speed = 10
 
@@ -160,7 +161,7 @@ class Bullet(pygame.sprite.Sprite):
             self.kill()
 
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, player, behavior=None):
+    def __init__(self, player_rect_x):
         super().__init__()
         if USE_FLYWEIGHT:
             self.flyweight = flyweight_factory.get_flyweight("enemy.png")
@@ -170,42 +171,42 @@ class Enemy(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=(random.randint(0, 800), -50))
         self.speed = 10  # Increase enemy speed for more difficulty
         self.direction = 1
-        self.player = player
+        self.player_rect_x = player_rect_x
+        
         if USE_STRATEGY:
-            if self.rect.x < player.rect.x:
-                self.behavior = TowardsPlayerBehavior()
-            else:
-                self.behavior = ZigZagBehavior()
+            self.setStrategy()
+        
+
+    def setStrategy(self): 
+        distance = abs(self.rect.x - self.player_rect_x)
+        if distance > 200:
+            self.strategy = TowardsPlayerBehavior()
         else:
-            # Implement behavior directly (messier way)
-            if self.rect.x < player.rect.x:
-                self.move = self.move_towards_player
-            else:
-                self.move = self.move_zigzag
+            self.strategy = ZigZagBehavior()
 
     def update(self):
-        if USE_STRATEGY:
-            self.behavior.move(self)
-        else:
-            self.move()
+        self.move()
         if self.rect.top > 600:
             self.kill()
 
-    def move_zigzag(self):
-        self.rect.x += self.speed * self.direction
-        self.rect.y += self.speed
-        if self.rect.x <= 0 or self.rect.x >= 800:
-            self.direction *= -1
+    def move(self): 
 
-    def move_straight(self):
-        self.rect.y += self.speed
-
-    def move_towards_player(self):
-        if self.rect.x < self.player.rect.x:
-            self.rect.x += self.speed
-        elif self.rect.x > self.player.rect.x:
-            self.rect.x -= self.speed
-        self.rect.y += self.speed
+        if USE_STRATEGY: 
+            self.strategy.move()
+        
+        else: 
+            distance = abs(self.rect.x - self.player_rect_x)
+            if distance > 200:
+                if self.rect.x < self.player_rect_x:
+                    self.rect.x += self.speed
+                elif self.rect.x > self.player_rect_x:
+                    self.rect.x -= self.speed
+                self.rect.y += self.speed
+            else:
+                self.rect.x += self.speed * self.direction
+                self.rect.y += self.speed
+                if self.rect.x <= 0 or self.rect.x >= 800:
+                    self.direction *= -1
 
 # Sprite groups
 player = Player()
@@ -231,7 +232,7 @@ while running:
 
         # Spawn enemies less frequently
         if random.randint(1, 20) == 1:
-            enemy = Enemy(player)
+            enemy = Enemy(player.rect.x)
             enemy_group.add(enemy)
 
         # Shooting bullets
