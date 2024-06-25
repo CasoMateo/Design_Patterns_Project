@@ -5,8 +5,8 @@ from abc import ABC, abstractmethod
 
 # Toggle flags
 USE_FLYWEIGHT = True
-USE_OBSERVER = True
-USE_STRATEGY = False
+USE_OBSERVER = False
+USE_STRATEGY = True
 
 # Pygame initialization
 pygame.init()
@@ -39,53 +39,49 @@ class Subject(ABC):
             observer.update(event)
 
 class GameState(Subject):
-    def __init__(self):
+    def __init__(self, time_limit):
         super().__init__()
         self.score = 0
         self.health = 100
+        self.start_ticks = pygame.time.get_ticks()  # Get the initial ticks
+        self.time_limit = time_limit  # Time limit in seconds
+        self.remaining_time = time_limit
 
     def change_state(self, event):
         if USE_OBSERVER:
             self.notify(event)
         else:
             if event == "ENEMY_HIT":
-                self.score += 10
+                self.score += 5
             elif event == "PLAYER_HIT":
-                self.health -= 25
+                self.health -= 50
+            self.update_timer()
+
+    def update_timer(self): 
+        elapsed_seconds = (pygame.time.get_ticks() - self.start_ticks) / 1000
+        self.remaining_time = max(0, self.time_limit - elapsed_seconds)
 
 class ScoreObserver(Observer):
     def update(self, event):
         if event == "ENEMY_HIT":
-            game_state.score += 10
+            game_state.score += 5
             print(f"Score updated: {game_state.score}")
 
 class HealthObserver(Observer):
     def update(self, event):
         if event == "PLAYER_HIT":
-            game_state.health -= 25
+            game_state.health -= 50
             print(f"Health updated: {game_state.health}")
 
-class TimerObserver(Observer):
-    def __init__(self, time_limit):
-        self.start_ticks = pygame.time.get_ticks()  # Get the initial ticks
-        self.time_limit = time_limit  # Time limit in seconds
-        self.remaining_time = time_limit
 
-    def update(self, event):
-        elapsed_seconds = (pygame.time.get_ticks() - self.start_ticks) / 1000
-        self.remaining_time = max(0, self.time_limit - elapsed_seconds)
-        if self.remaining_time <= 0 and game_state.health > 0:
-            game_state.notify("TIME_UP")
-
-game_state = GameState()
-score_observer = ScoreObserver()
-health_observer = HealthObserver()
-timer_observer = TimerObserver(15)  # 15 seconds timer
+game_state = GameState(15)
+  # 15 seconds timer
 
 if USE_OBSERVER:
+    score_observer = ScoreObserver()
+    health_observer = HealthObserver()
     game_state.attach(score_observer)
     game_state.attach(health_observer)
-    game_state.attach(timer_observer)
 
 # Flyweight pattern
 class Flyweight:
@@ -98,7 +94,7 @@ class FlyweightFactory:
 
     def get_flyweight(self, key):
         if key not in self._flyweights:
-            self._flyweights[key] = EnemyFlyweight(pygame.image.load(key).convert_alpha())
+            self._flyweights[key] = Flyweight(pygame.image.load(key).convert_alpha())
         return self._flyweights[key]
 
 flyweight_factory = FlyweightFactory()
@@ -109,19 +105,18 @@ class EnemyBehavior(ABC):
     def move(self, enemy):
         pass
 
-class ZigZagBehavior(EnemyBehavior):
+class StraightBehavior(EnemyBehavior):
     def move(self, enemy):
-        enemy.rect.x += enemy.speed * enemy.direction
         enemy.rect.y += enemy.speed
-        if enemy.rect.x <= 0 or enemy.rect.x >= 800:
-            enemy.direction *= -1
 
-class TowardsPlayerBehavior(EnemyBehavior):
+class LeftBehavior(EnemyBehavior):
     def move(self, enemy):
-        if enemy.rect.x < enemy.player.rect.x:
-            enemy.rect.x += enemy.speed
-        elif enemy.rect.x > enemy.player.rect.x:
-            enemy.rect.x -= enemy.speed
+        enemy.rect.x -= enemy.speed
+        enemy.rect.y += enemy.speed
+
+class RightBehavior(EnemyBehavior):
+    def move(self, enemy):
+        enemy.rect.x += enemy.speed
         enemy.rect.y += enemy.speed
 
 # Game objects
@@ -130,7 +125,7 @@ class Player(pygame.sprite.Sprite):
         super().__init__()
         self.image = pygame.image.load("player.png").convert_alpha()
         self.rect = self.image.get_rect(center=(400, 500))
-        self.speed = 7  # Increase player speed
+        self.speed = 8  # Increase player speed
 
     def update(self):
         keys = pygame.key.get_pressed()
@@ -169,7 +164,7 @@ class Enemy(pygame.sprite.Sprite):
         else:
             self.image = pygame.image.load("enemy.png").convert_alpha()
         self.rect = self.image.get_rect(center=(random.randint(0, 800), -50))
-        self.speed = 10  # Increase enemy speed for more difficulty
+        self.speed = 10
         self.direction = 1
         self.player_rect_x = player_rect_x
         
@@ -178,35 +173,39 @@ class Enemy(pygame.sprite.Sprite):
         
 
     def setStrategy(self): 
-        distance = abs(self.rect.x - self.player_rect_x)
-        if distance > 200:
-            self.strategy = TowardsPlayerBehavior()
-        else:
-            self.strategy = ZigZagBehavior()
+        dif = (self.player_rect_x - self.rect.x) 
 
-    def update(self):
+        if dif >= 30:
+            self.strategy = RightBehavior()
+        elif dif <= -30:
+            self.strategy = LeftBehavior()
+        else: 
+            self.strategy = StraightBehavior()
+    
+    def update(self, new_player_rect_x):
+        if random.randint(1, 200) == 1:
+            self.player_rect_x = new_player_rect_x
+            self.setStrategy()
         self.move()
         if self.rect.top > 600:
             self.kill()
 
-    def move(self): 
+    def update_(self, new_player_rect_x):
+        self.player_rect_x = new_player_rect_x
+        self.setStrategy()
 
-        if USE_STRATEGY: 
-            self.strategy.move()
-        
-        else: 
-            distance = abs(self.rect.x - self.player_rect_x)
-            if distance > 200:
-                if self.rect.x < self.player_rect_x:
-                    self.rect.x += self.speed
-                elif self.rect.x > self.player_rect_x:
-                    self.rect.x -= self.speed
+    def move(self):
+        if USE_STRATEGY:
+            self.strategy.move(self)
+        else:
+            if self.rect.x < self.player_rect_x:
+                self.rect.x += self.speed
                 self.rect.y += self.speed
-            else:
-                self.rect.x += self.speed * self.direction
+            elif self.rect.x > self.player_rect_x:
+                self.rect.x -= self.speed
                 self.rect.y += self.speed
-                if self.rect.x <= 0 or self.rect.x >= 800:
-                    self.direction *= -1
+            else: 
+                self.rect.y += self.speed
 
 # Sprite groups
 player = Player()
@@ -226,12 +225,12 @@ while running:
             running = False
 
     if not game_over and not win:
-        # Update timer
-        timer_observer.update(None)
-        remaining_time = timer_observer.remaining_time
+        # Timer update handled by Observer if enabled, otherwise update directly
+        
+        game_state.update_timer()
 
         # Spawn enemies less frequently
-        if random.randint(1, 20) == 1:
+        if random.randint(1, 7) == 1:
             enemy = Enemy(player.rect.x)
             enemy_group.add(enemy)
 
@@ -244,7 +243,8 @@ while running:
         # Update sprites
         player_group.update()
         bullet_group.update()
-        enemy_group.update()
+        enemy_group.update(player.rect.x)
+        
 
         # Check collisions between bullets and enemies
         collisions = pygame.sprite.groupcollide(enemy_group, bullet_group, True, True)
@@ -260,7 +260,7 @@ while running:
         # Check win/lose conditions
         if game_state.health <= 0:
             game_over = True
-        if remaining_time <= 0 and game_state.health > 0:
+        if game_state.remaining_time <= 0 and game_state.health > 0:
             win = True
         if game_state.score >= 100:
             win = True
@@ -275,7 +275,7 @@ while running:
     # Draw score, health, and timer
     score_text = font.render(f"Score: {game_state.score}", True, (255, 255, 255))
     health_text = font.render(f"Health: {game_state.health}", True, (255, 255, 255))
-    timer_text = font.render(f"Time: {remaining_time:.2f}", True, (255, 255, 255))
+    timer_text = font.render(f"Time: {game_state.remaining_time:.2f}", True, (255, 255, 255))
     screen.blit(score_text, (10, 10))
     screen.blit(health_text, (10, 50))
     screen.blit(timer_text, (10, 90))
@@ -283,8 +283,6 @@ while running:
     # Draw win/lose messages
     if game_over and game_state.health <= 0:
         lose_text = large_font.render("You Lose!", True, (255, 0, 0))
-        
-
         screen.blit(lose_text, (250, 250))
     elif win:
         win_text = large_font.render("You Win!", True, (0, 255, 0))
