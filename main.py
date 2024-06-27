@@ -34,9 +34,9 @@ class Subject(ABC):
     def detach(self, observer):
         self._observers.remove(observer)
 
-    def notify(self, event):
+    def notify(self, event, game_state):
         for observer in self._observers:
-            observer.update(event)
+            observer.update(event, game_state)
 
 class GameState(Subject):
     def __init__(self, time_limit):
@@ -49,26 +49,30 @@ class GameState(Subject):
 
     def change_state(self, event):
         if USE_OBSERVER:
-            self.notify(event)
+            self.notify(event, self)
         else:
-            if event == "ENEMY_HIT":
-                self.score += 5
-            elif event == "PLAYER_HIT":
-                self.health -= 50
+            self.apply_changes(event)
             self.update_timer()
+
+    def apply_changes(self, event):
+        """Direct changes to the state, used when not using observers."""
+        if event == "ENEMY_HIT":
+            self.score += 5
+        elif event == "PLAYER_HIT":
+            self.health -= 50
 
     def update_timer(self): 
         elapsed_seconds = (pygame.time.get_ticks() - self.start_ticks) / 1000
         self.remaining_time = max(0, self.time_limit - elapsed_seconds)
 
 class ScoreObserver(Observer):
-    def update(self, event):
+    def update(self, event, game_state):
         if event == "ENEMY_HIT":
             game_state.score += 5
             print(f"Score updated: {game_state.score}")
 
 class HealthObserver(Observer):
-    def update(self, event):
+    def update(self, event, game_state):
         if event == "PLAYER_HIT":
             game_state.health -= 50
             print(f"Health updated: {game_state.health}")
@@ -93,9 +97,7 @@ class FlyweightFactory:
         self._flyweights = {}
 
     def get_flyweight(self, key):
-        if key not in self._flyweights:
-            self._flyweights[key] = Flyweight(pygame.image.load(key).convert_alpha())
-        return self._flyweights[key]
+        return self._flyweights.setdefault(key, EnemyFlyweight(pygame.image.load(key).convert_alpha()))
 
 flyweight_factory = FlyweightFactory()
 
