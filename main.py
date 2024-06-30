@@ -4,6 +4,15 @@ import sys
 from abc import ABC, abstractmethod
 from config import USE_FLYWEIGHT, USE_OBSERVER, USE_STRATEGY
 
+pygame.init()
+screen = pygame.display.set_mode((800, 600))
+pygame.display.set_caption("Space Shooter")
+font = pygame.font.Font(None, 36)
+large_font = pygame.font.Font(None, 72)
+score_text = font.render(f"Score: {0}", True, (255, 255, 255))
+health_text = font.render(f"Health: {100}", True, (255, 255, 255))
+timer_text = font.render(f"Time: {15:.2f}", True, (255, 255, 255))
+
 # Observer pattern
 class Observer(ABC):
     @abstractmethod
@@ -21,9 +30,9 @@ class Subject(ABC):
     def detach(self, observer):
         self._observers.remove(observer)
 
-    def notify(self, event, game_state):
+    def notify(self, event, health, score):
         for observer in self._observers:
-            observer.update(event, game_state)
+            observer.update(event, health, score)
 
 class GameState(Subject):
     def __init__(self, time_limit):
@@ -35,11 +44,12 @@ class GameState(Subject):
         self.remaining_time = time_limit
 
     def change_state(self, event):
+        
+        self.apply_changes(event)
+        self.update_timer()
+
         if USE_OBSERVER:
-            self.notify(event, self)
-        else:
-            self.apply_changes(event)
-            self.update_timer()
+            self.notify(event, self.health, self.score)
 
     def apply_changes(self, event):
         """Direct changes to the state, used when not using observers."""
@@ -53,17 +63,19 @@ class GameState(Subject):
         self.remaining_time = max(0, self.time_limit - elapsed_seconds)
 
 class ScoreObserver(Observer):
-    def update(self, event, game_state):
+    def update(self, event, health, score):
         if event == "ENEMY_HIT":
-            game_state.score += 5
-            print(f"Score updated: {game_state.score}")
+            
+            global score_text
+            score_text = font.render(f"Score: {score}", True, (255, 255, 255))
+            
 
 class HealthObserver(Observer):
-    def update(self, event, game_state):
+    def update(self, event, health, score):
         if event == "PLAYER_HIT":
-            game_state.health -= 50
-            print(f"Health updated: {game_state.health}")
-
+            global health_text
+            health_text = font.render(f"Health: {health}", True, (255, 255, 255))
+            
 
 # Flyweight pattern
 class Flyweight:
@@ -75,7 +87,7 @@ class FlyweightFactory:
         self._flyweights = {}
 
     def get_flyweight(self, key):
-        return self._flyweights.setdefault(key, EnemyFlyweight(pygame.image.load(key).convert_alpha()))
+        return self._flyweights.setdefault(key, Flyweight(pygame.image.load(key).convert_alpha()))
 
 flyweight_factory = FlyweightFactory()
 
@@ -184,12 +196,8 @@ class Enemy(pygame.sprite.Sprite):
                 self.rect.y += self.speed
 
 def main_game_loop():
-    pygame.init()
-    screen = pygame.display.set_mode((800, 600))
-    pygame.display.set_caption("Space Shooter")
-    font = pygame.font.Font(None, 36)
-    large_font = pygame.font.Font(None, 72)
-
+    
+    
     # Initialize game state and observers
     game_state = GameState(15)  # Assuming a 15-second timer
     if USE_OBSERVER:
@@ -264,10 +272,15 @@ def main_game_loop():
         player_group.draw(screen)
         bullet_group.draw(screen)
         enemy_group.draw(screen)
+        global score_text 
+        global health_text 
+        global timer_text
 
         # Draw score, health, and timer
-        score_text = font.render(f"Score: {game_state.score}", True, (255, 255, 255))
-        health_text = font.render(f"Health: {game_state.health}", True, (255, 255, 255))
+        if not USE_OBSERVER:
+            score_text = font.render(f"Score: {game_state.score}", True, (255, 255, 255))
+            health_text = font.render(f"Health: {game_state.health}", True, (255, 255, 255))
+        
         timer_text = font.render(f"Time: {game_state.remaining_time:.2f}", True, (255, 255, 255))
         screen.blit(score_text, (10, 10))
         screen.blit(health_text, (10, 50))
