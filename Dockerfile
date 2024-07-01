@@ -31,5 +31,5 @@ ENV PYTHONUNBUFFERED=1
 # Make port 8000 available to the world outside this container
 EXPOSE 8000
 
-# Run app.py when the container launches
-CMD ["python3", "main.py"]
+# Run measure_usage.py when the container launches
+CMD ["python3", "measure_usage.py"]

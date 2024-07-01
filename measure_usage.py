@@ -5,10 +5,10 @@ import datetime
 import pygame
 
 def get_system_metrics():
-    cpu_usage = psutil.cpu_percent(interval=1)
-    ram_usage = psutil.virtual_memory().percent
+    cpu_usage = psutil.cpu_percent(interval=None)  # Get instant CPU usage
+    ram_usage = psutil.virtual_memory().percent    # Get current RAM usage percentage
     battery = psutil.sensors_battery() if hasattr(psutil, "sensors_battery") else None
-    battery_status = f"{battery.percent:.2f}" if battery else 'No battery'  # Report battery with two decimal places
+    battery_status = f"{battery.percent:.2f}" if battery else 'No battery'
     return cpu_usage, ram_usage, battery_status
 
 def get_memory_usage():
@@ -17,26 +17,39 @@ def get_memory_usage():
     return memory_info.rss  # Return RSS memory usage in bytes
 
 def record_usage():
-    start_cpu, start_ram, start_battery = get_system_metrics()
-    start_memory = get_memory_usage()
-    print(f"Start - {datetime.datetime.now()}: CPU: {start_cpu}%, RAM: {start_ram}%, Battery: {start_battery}%, Memory: {start_memory} bytes")
-    
+    start_time = datetime.datetime.now()
+    print(f"Start - {start_time}")
+
+    # Initialize peak usage variables
+    peak_cpu = 0
+    peak_ram = 0
+    peak_memory = 0
+
     # Start the game or application
     process = subprocess.Popen(['python3', 'main.py'])
-    process.wait()  # Wait for the game to finish
 
-    end_cpu, end_ram, end_battery = get_system_metrics()
-    end_memory = get_memory_usage()
-    print(f"End - {datetime.datetime.now()}: CPU: {end_cpu}%, RAM: {end_ram}%, Battery: {end_battery}%, Memory: {end_memory} bytes")
+    # Monitor CPU, RAM, and memory usage every second
+    while process.poll() is None:
+        current_cpu, current_ram, _ = get_system_metrics()
+        current_memory = get_memory_usage()
 
-    # Calculate deltas
-    delta_cpu = end_cpu - start_cpu
-    delta_ram = end_ram - start_ram
-    delta_memory = end_memory - start_memory
-    delta_battery = f"{float(start_battery) - float(end_battery):.2f}" if 'No battery' not in (start_battery, end_battery) else 'No battery info'
-    print(f"Delta: CPU: {delta_cpu}%, RAM: {delta_ram}%, Battery: {delta_battery}%, Memory: {delta_memory} bytes")
+        # Update peak values if current readings are higher
+        peak_cpu = max(peak_cpu, current_cpu)
+        peak_ram = max(peak_ram, current_ram)
+        peak_memory = max(peak_memory, current_memory)
 
-    
+        time.sleep(1)  # Sleep to limit the frequency of measurements
+
+    # Wait for the process to finish if it's done between checks
+    process.wait()
+
+    end_time = datetime.datetime.now()
+    print(f"End - {end_time}")
+
+    # Print peak usages
+    print(f"Peak CPU Usage: {peak_cpu}%")
+    print(f"Peak RAM Usage: {peak_ram}%")
+    print(f"Peak Memory Usage: {peak_memory} bytes")
+
 if __name__ == "__main__":
     record_usage()
-
