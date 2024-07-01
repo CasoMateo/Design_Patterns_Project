@@ -9,19 +9,18 @@ screen = pygame.display.set_mode((800, 600))
 pygame.display.set_caption("Space Shooter")
 font = pygame.font.Font(None, 36)
 large_font = pygame.font.Font(None, 72)
-score_text = font.render(f"Score: {0}", True, (255, 255, 255))
-health_text = font.render(f"Health: {100}", True, (255, 255, 255))
-timer_text = font.render(f"Time: {15:.2f}", True, (255, 255, 255))
 
 # Observer pattern
 class Observer(ABC):
+
     @abstractmethod
     def update(self, event):
         pass
 
 class Subject(ABC):
-    def __init__(self):
+    def __init__(self, game_state):
         self._observers = []
+        self.game_state = game_state
 
     def attach(self, observer):
         if observer not in self._observers:
@@ -30,51 +29,49 @@ class Subject(ABC):
     def detach(self, observer):
         self._observers.remove(observer)
 
-    def notify(self, event, health, score):
+    def notify(self, event):
         for observer in self._observers:
-            observer.update(event, health, score)
+            observer.update(event, self.game_state)
 
-class GameState(Subject):
+class GameCollisions(Subject): 
+
+    def change_state(self, event): 
+        self.notify(event)
+
+class GameState():
     def __init__(self, time_limit):
         super().__init__()
         self.score = 0
-        self.health = 100
+        self.health = 10000
         self.start_ticks = pygame.time.get_ticks()  # Get the initial ticks
         self.time_limit = time_limit  # Time limit in seconds
         self.remaining_time = time_limit
-
-    def change_state(self, event):
+        self.score_text = font.render(f"Score: {0}", True, (255, 255, 255))
+        self.health_text = font.render(f"Health: {10000}", True, (255, 255, 255))
         
-        self.apply_changes(event)
-        self.update_timer()
-
-        if USE_OBSERVER:
-            self.notify(event, self.health, self.score)
-
-    def apply_changes(self, event):
-        """Direct changes to the state, used when not using observers."""
-        if event == "ENEMY_HIT":
-            self.score += 5
-        elif event == "PLAYER_HIT":
-            self.health -= 50
-
     def update_timer(self): 
         elapsed_seconds = (pygame.time.get_ticks() - self.start_ticks) / 1000
         self.remaining_time = max(0, self.time_limit - elapsed_seconds)
 
+    def draw(self): 
+        
+        screen.blit(self.score_text, (10, 10))
+        screen.blit(self.health_text, (10, 50))
+        screen.blit(font.render(f"Time: {self.remaining_time:.2f}", True, (255, 255, 255)), (10, 90))
+
 class ScoreObserver(Observer):
-    def update(self, event, health, score):
+    def update(self, event, game_state):
         if event == "ENEMY_HIT":
             
-            global score_text
-            score_text = font.render(f"Score: {score}", True, (255, 255, 255))
+            game_state.score += 5
+            game_state.score_text = font.render(f"Score: {game_state.score}", True, (255, 255, 255))
             
 
 class HealthObserver(Observer):
-    def update(self, event, health, score):
+    def update(self, event, game_state):
         if event == "PLAYER_HIT":
-            global health_text
-            health_text = font.render(f"Health: {health}", True, (255, 255, 255))
+            game_state.health -= 20
+            game_state.health_text = font.render(f"Health: {game_state.health}", True, (255, 255, 255))
             
 
 # Flyweight pattern
@@ -195,30 +192,69 @@ class Enemy(pygame.sprite.Sprite):
             else: 
                 self.rect.y += self.speed
 
+def simulate_player_actions(player, bullet_group, frame_count):
+    """ Simulate player movements and shooting based on frame count for automated testing. """
+    screen_width, screen_height = screen.get_size()  # Get the actual screen dimensions dynamically
+    margin = 100  # Reduced margin from the edges for a wider movement range
+    vertical_speed = player.speed * 0.8  # Decrease speed for more controlled movement
+
+    # Define movement patterns based on frame count
+    cycle = frame_count % 400  # Adjust cycle length for more fluid zigzag
+
+    # Zigzag pattern with enhanced vertical movement
+    if cycle < 100:
+        player.rect.x += vertical_speed  # Move right more slowly
+        if cycle % 20 < 10:  # Zigzag down and up every 10 frames
+            player.rect.y += vertical_speed + 13
+        else: 
+            player.rect.y -= vertical_speed + 13
+    elif cycle < 200:
+        player.rect.x -= vertical_speed  # Move left more slowly
+        if cycle % 20 < 10:
+            player.rect.y += vertical_speed + 13
+        else:
+            player.rect.y -= vertical_speed + 13
+    elif cycle < 300:
+        player.rect.x += vertical_speed  # Move right again more slowly
+        if cycle % 20 < 10:
+            player.rect.y += vertical_speed + 13
+        else:
+            player.rect.y -= vertical_speed + 13
+    elif cycle < 400:
+        player.rect.x -= vertical_speed  # Move left again more slowly
+        if cycle % 20 < 10:
+            player.rect.y += vertical_speed + 13
+        else:
+            player.rect.y -= vertical_speed + 13
+
+    # Ensure the player doesn't move outside the screen boundaries
+    player.rect.x = max(margin, min(player.rect.x, screen_width - margin))
+    player.rect.y = max(margin, min(player.rect.y, screen_height - margin))
+
+    # Fire bullets less frequently to better observe shooting mechanics
+    if frame_count % 8 == 0:  # Reduce the firing rate for testing
+        bullet = Bullet(player.rect.centerx, player.rect.top)
+        bullet_group.add(bullet)
+
 def main_game_loop():
-    
-    
-    # Initialize game state and observers
     game_state = GameState(15)  # Assuming a 15-second timer
     if USE_OBSERVER:
+        game_collisions = GameCollisions(game_state)
         score_observer = ScoreObserver()
         health_observer = HealthObserver()
-        game_state.attach(score_observer)
-        game_state.attach(health_observer)
-
-    # Initialize Flyweight Factory
-    flyweight_factory = FlyweightFactory()
+        game_collisions.attach(score_observer)
+        game_collisions.attach(health_observer)
 
     player = Player()
     player_group = pygame.sprite.Group(player)
     bullet_group = pygame.sprite.Group()
     enemy_group = pygame.sprite.Group()
 
-    # Main game loop
     clock = pygame.time.Clock()
     running = True
     game_over = False
     win = False
+    frame_count = 0
 
     while running:
         for event in pygame.event.get():
@@ -226,67 +262,55 @@ def main_game_loop():
                 running = False
 
         if not game_over and not win:
-            # Timer update handled by Observer if enabled, otherwise update directly
-            
             game_state.update_timer()
+            simulate_player_actions(player, bullet_group, frame_count)
 
-            # Spawn enemies less frequently
-            if random.randint(1, 7) == 1:
+            if random.randint(1, 10) == 1:
                 enemy = Enemy(player.rect.x)
                 enemy_group.add(enemy)
 
-            # Shooting bullets
-            keys = pygame.key.get_pressed()
-            if keys[pygame.K_SPACE]:
-                bullet = Bullet(player.rect.centerx, player.rect.top)
-                bullet_group.add(bullet)
-
-            # Update sprites
             player_group.update()
             bullet_group.update()
             enemy_group.update(player.rect.x)
-            
 
-            # Check collisions between bullets and enemies
             collisions = pygame.sprite.groupcollide(enemy_group, bullet_group, True, True)
+
             for collision in collisions:
-                game_state.change_state("ENEMY_HIT")
+                if USE_OBSERVER:
+                    game_collisions.change_state("ENEMY_HIT")
+                else: 
+                    game_state.score += 5
+                    game_state.score_text = font.render(f"Score: {game_state.score}", True, (255, 255, 255))
 
-            # Check collisions between player and enemies
             player_hit = pygame.sprite.spritecollideany(player, enemy_group)
-            if player_hit:
-                game_state.change_state("PLAYER_HIT")
-                player_hit.kill()  # Remove the enemy that hit the player
 
-            # Check win/lose conditions
+            if player_hit:
+                if USE_OBSERVER: 
+
+                    game_collisions.change_state("PLAYER_HIT")
+                
+                else: 
+                    game_state.health -= 20
+                    game_state.health_text = font.render(f"Health: {game_state.health}", True, (255, 255, 255))
+
+
+                player_hit.kill()
+
             if game_state.health <= 0:
                 game_over = True
             if game_state.remaining_time <= 0 and game_state.health > 0:
                 win = True
-            if game_state.score >= 100:
+            if game_state.score >= 10000:
                 win = True
                 game_over = True
 
-        # Draw everything
         screen.fill((0, 0, 0))
         player_group.draw(screen)
         bullet_group.draw(screen)
         enemy_group.draw(screen)
-        global score_text 
-        global health_text 
-        global timer_text
 
-        # Draw score, health, and timer
-        if not USE_OBSERVER:
-            score_text = font.render(f"Score: {game_state.score}", True, (255, 255, 255))
-            health_text = font.render(f"Health: {game_state.health}", True, (255, 255, 255))
-        
-        timer_text = font.render(f"Time: {game_state.remaining_time:.2f}", True, (255, 255, 255))
-        screen.blit(score_text, (10, 10))
-        screen.blit(health_text, (10, 50))
-        screen.blit(timer_text, (10, 90))
+        game_state.draw()
 
-        # Draw win/lose messages
         if game_over and game_state.health <= 0:
             lose_text = large_font.render("You Lose!", True, (255, 0, 0))
             screen.blit(lose_text, (250, 250))
@@ -295,8 +319,8 @@ def main_game_loop():
             screen.blit(win_text, (250, 250))
 
         pygame.display.flip()
-
         clock.tick(60)
+        frame_count += 1  # Increment to change automated actions over time
 
     pygame.quit()
     sys.exit()
