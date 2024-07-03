@@ -2,41 +2,36 @@ import subprocess
 import psutil
 import time
 import datetime
-import pygame
 
-def get_system_metrics():
-    cpu_usage = psutil.cpu_percent(interval=None)  # Get instant CPU usage
-    ram_usage = psutil.virtual_memory().percent    # Get current RAM usage percentage
-    battery = psutil.sensors_battery() if hasattr(psutil, "sensors_battery") else None
-    battery_status = f"{battery.percent:.2f}" if battery else 'No battery'
-    return cpu_usage, ram_usage, battery_status
+def get_process_metrics(process):
+    """ Fetch CPU and RAM usage of the specific process. """
+    try:
+        cpu_usage = process.cpu_percent(interval=1) / psutil.cpu_count()  # CPU usage as a percentage
+        memory_info = process.memory_info()
+        ram_usage = memory_info.rss  # Resident Set Size memory usage in bytes (actual RAM usage)
+        return cpu_usage, ram_usage
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return 0, 0
 
-def get_memory_usage():
-    process = psutil.Process()  # Get the current process
-    memory_info = process.memory_info()
-    return memory_info.rss  # Return RSS memory usage in bytes
-
-def record_usage():
+def record_usage(game_command):
     start_time = datetime.datetime.now()
     print(f"Start - {start_time}")
+
+    # Start the game or application
+    process = subprocess.Popen(game_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    game_process = psutil.Process(process.pid)
 
     # Initialize peak usage variables
     peak_cpu = 0
     peak_ram = 0
-    peak_memory = 0
 
-    # Start the game or application
-    process = subprocess.Popen(['python3', 'main.py'])
-
-    # Monitor CPU, RAM, and memory usage every second
+    # Monitor CPU and RAM usage every second
     while process.poll() is None:
-        current_cpu, current_ram, _ = get_system_metrics()
-        current_memory = get_memory_usage()
+        current_cpu, current_ram = get_process_metrics(game_process)
 
         # Update peak values if current readings are higher
         peak_cpu = max(peak_cpu, current_cpu)
         peak_ram = max(peak_ram, current_ram)
-        peak_memory = max(peak_memory, current_memory)
 
         time.sleep(1)  # Sleep to limit the frequency of measurements
 
@@ -48,8 +43,8 @@ def record_usage():
 
     # Print peak usages
     print(f"Peak CPU Usage: {peak_cpu}%")
-    print(f"Peak RAM Usage: {peak_ram}%")
-    print(f"Peak Memory Usage: {peak_memory} bytes")
+    print(f"Peak RAM/RSS Usage: {peak_ram} bytes")  # Now explicitly labeled as RAM usage
 
 if __name__ == "__main__":
-    record_usage()
+    game_command = ['python3', 'main.py']  # Command to run your game or application
+    record_usage(game_command)
